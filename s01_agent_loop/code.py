@@ -54,6 +54,7 @@ MODEL = os.environ["MODEL_ID"]
 SYSTEM = f"You are a coding agent at {os.getcwd()}. Use bash to solve tasks. Act, don't explain."
 
 # ── Tool definition: just bash ────────────────────────────
+# 这是Anthropic协议的工具schema
 TOOLS = [{
     "name": "bash",
     "description": "Run a shell command.",
@@ -83,6 +84,7 @@ def run_bash(command: str) -> str:
 
 # ── The core pattern: a while loop that calls tools until the model stops ──
 def agent_loop(messages: list):
+    """理解这个函数的细节需要了解response的结构，见问文件末尾的注释"""
     while True:
         response = client.messages.create(
             model=MODEL, system=SYSTEM, messages=messages,
@@ -135,3 +137,36 @@ if __name__ == "__main__":
                 if getattr(block, "type", None) == "text":
                     print(block.text)
         print()
+
+
+# response的结构
+"""
+{
+  "id": "msg_xxx",
+  "type": "message",
+  "role": "assistant",
+  "content": [ /* 这里是 block 数组 */ ],
+  "model": "...",
+  "stop_reason": "end_turn" | "tool_use" | "max_tokens" | "stop_sequence",
+  "usage": { "input_tokens": N, "output_tokens": M }
+}
+"""
+
+# 纯文本
+"""
+{
+  "content": [ { "type": "text", "text": "你好！" } ],
+  "stop_reason": "end_turn"
+}
+"""
+
+# tool_use
+"""
+{
+  "content": [
+    { "type": "text", "text": "让我查一下" },
+    { "type": "tool_use", "id": "toolu_xxx", "name": "bash", "input": {"command": "ls"} }
+  ],
+  "stop_reason": "tool_use"
+}
+"""
