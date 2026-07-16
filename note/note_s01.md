@@ -1,4 +1,4 @@
-这一章主要讲的是 Agent Loop
+这一节主要讲的是 Agent Loop
 
 readme中给出的是 "while 循环中，执行 工具调用->执行->喂回->再问"。
 
