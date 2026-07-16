@@ -18,3 +18,8 @@ There are **3,139** files under the current directory (including all subdirector
 
 [36ms01 >> [0m
 ```
+
+突然注意到，这里的消息列表设计和我设想的不一样。
+
+这里的设计中，role 只有 assistant 和 user 两种（而没有tool），tool_result 作为 content block 放在 user 的 content 中。
+保持对话历史中每条消息的 role 清晰：用户提供输入（包括工具结果），助手给出回复（包括工具调用）。
