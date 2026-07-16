@@ -213,7 +213,9 @@ PERMISSION_RULES = [
         "tools": ["write_file", "edit_file"],
         "check": lambda args: not (WORKDIR / args.get("path", ""))
         .resolve()
-        .is_relative_to(WORKDIR),
+        .is_relative_to(
+            WORKDIR
+        ),  # path_a.is_relative_to(path_b) 判断path_a是否位于path_b之下
         "message": "Writing outside workspace",
     },
     {
@@ -227,6 +229,7 @@ PERMISSION_RULES = [
 
 
 def check_rules(tool_name: str, args: dict) -> str | None:
+    """命中后，交给第三道闸门判断；若未命中，放行"""
     for rule in PERMISSION_RULES:
         if tool_name in rule["tools"] and rule["check"](args):
             return rule["message"]
@@ -235,6 +238,7 @@ def check_rules(tool_name: str, args: dict) -> str | None:
 
 # Gate 3: User approval — wait for confirmation after rule match
 def ask_user(tool_name: str, args: dict, reason: str) -> str:
+    """设置中断，从终端获取用户的输入"""
     print(f"\n\033[33m⚠  {reason}\033[0m")
     print(f"   Tool: {tool_name}({args})")
     choice = input("   Allow? [y/N] ").strip().lower()
@@ -280,7 +284,9 @@ def agent_loop(messages: list):
             if block.type != "tool_use":
                 continue
 
-            print(f"\033[36m> {block.name}\033[0m")
+            print(f"\033[36m>Tool name: {block.name}\033[0m")
+            for k, v in block.input.items():
+                print(f"\tInput key: {k}\t Input vlaue: {v}")
 
             # s03 change: run through permission pipeline before executing
             if not check_permission(block):
