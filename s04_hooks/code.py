@@ -217,10 +217,12 @@ HOOKS = {"UserPromptSubmit": [], "PreToolUse": [], "PostToolUse": [], "Stop": []
 
 
 def register_hook(event: str, callback):
+    """指定event和函数，函数添加到对应event的列表中"""
     HOOKS[event].append(callback)
 
 
 def trigger_hooks(event: str, *args):
+    """执行指定event的所有函数"""
     for callback in HOOKS[event]:
         result = callback(*args)
         if result is not None:  # teaching shortcut: block this tool call
@@ -234,7 +236,10 @@ DESTRUCTIVE = ["rm ", "> /etc/", "chmod 777"]
 
 
 def permission_hook(block):
-    """PreToolUse: s03 check_permission() logic moved here."""
+    """
+    PreToolUse: s03 check_permission() logic moved here.
+    这里还是遵循了s03的三道闸门设计。返回None表示放行
+    """
     if block.name == "bash":
         for pattern in DENY_LIST:
             if pattern in block.input.get("command", ""):
@@ -317,6 +322,7 @@ def agent_loop(messages: list):
         )
         messages.append({"role": "assistant", "content": response.content})
 
+        # 如果此时loop结束，完成Stop事件
         if response.stop_reason != "tool_use":
             force = trigger_hooks("Stop", messages)
             if force:
