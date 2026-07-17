@@ -158,6 +158,11 @@ def _normalize_todos(todos):
 
 
 def run_todo_write(todos: list) -> str:
+    """
+    TodoWrite的运行时执行，是：
+    1. 整理模型输出，覆盖CURRENT_TODOS；
+    2. 在终端打印CURRENT_TODOS。
+    """
     global CURRENT_TODOS
     todos, error = _normalize_todos(todos)
     if error:
@@ -363,6 +368,8 @@ def agent_loop(messages: list):
         for block in response.content:
             if block.type != "tool_use":
                 continue
+
+            print(f"TOOL: {block.name}({block.input})")
 
             blocked = trigger_hooks("PreToolUse", block)
             if blocked:
