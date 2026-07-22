@@ -32,11 +32,12 @@ import subprocess
 
 try:
     import readline
+
     # macOS 的 libedit 在处理中文输入时有退格问题，这四行修复它
-    readline.parse_and_bind('set bind-tty-special-chars off')
-    readline.parse_and_bind('set input-meta on')
-    readline.parse_and_bind('set output-meta on')
-    readline.parse_and_bind('set convert-meta off')
+    readline.parse_and_bind("set bind-tty-special-chars off")
+    readline.parse_and_bind("set input-meta on")
+    readline.parse_and_bind("set output-meta on")
+    readline.parse_and_bind("set convert-meta off")
 except ImportError:
     pass
 
@@ -55,15 +56,17 @@ SYSTEM = f"You are a coding agent at {os.getcwd()}. Use bash to solve tasks. Act
 
 # ── Tool definition: just bash ────────────────────────────
 # 这是Anthropic协议的工具schema
-TOOLS = [{
-    "name": "bash",
-    "description": "Run a shell command.",
-    "input_schema": {
-        "type": "object",
-        "properties": {"command": {"type": "string"}},
-        "required": ["command"],
-    },
-}]
+TOOLS = [
+    {
+        "name": "bash",
+        "description": "Run a shell command.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"command": {"type": "string"}},
+            "required": ["command"],
+        },
+    }
+]
 
 
 # ── Tool execution ────────────────────────────────────────
@@ -72,8 +75,14 @@ def run_bash(command: str) -> str:
     if any(d in command for d in dangerous):
         return "Error: Dangerous command blocked"
     try:
-        r = subprocess.run(command, shell=True, cwd=os.getcwd(),
-                           capture_output=True, text=True, timeout=120)
+        r = subprocess.run(
+            command,
+            shell=True,
+            cwd=os.getcwd(),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
         out = (r.stdout + r.stderr).strip()
         return out[:50000] if out else "(no output)"
     except subprocess.TimeoutExpired:
@@ -84,11 +93,14 @@ def run_bash(command: str) -> str:
 
 # ── The core pattern: a while loop that calls tools until the model stops ──
 def agent_loop(messages: list):
-    """理解这个函数的细节需要了解response的结构，见问文件末尾的注释"""
+    """理解这个函数的细节需要了解response的结构，见文件末尾的注释"""
     while True:
         response = client.messages.create(
-            model=MODEL, system=SYSTEM, messages=messages,
-            tools=TOOLS, max_tokens=8000,
+            model=MODEL,
+            system=SYSTEM,
+            messages=messages,
+            tools=TOOLS,
+            max_tokens=8000,
         )
 
         # Append assistant turn
@@ -99,17 +111,20 @@ def agent_loop(messages: list):
             return
 
         # Execute each tool call, collect results
+        # 收集工具执行结果到results，然后results是作为role为user的content
         results = []
         for block in response.content:
             if block.type == "tool_use":
                 print(f"\033[33m$ {block.input['command']}\033[0m")
                 output = run_bash(block.input["command"])
                 print(output[:200])
-                results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": output,
-                })
+                results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": output,
+                    }
+                )
 
         # Feed tool results back, loop continues
         messages.append({"role": "user", "content": results})
@@ -120,6 +135,13 @@ if __name__ == "__main__":
     print("s01: Agent Loop")
     print("输入问题，回车发送。输入 q 退出。\n")
 
+    # 这个while循环外的history设计：
+    # 在while循环外：整个session对话的上下文
+    # 在一次agent_loop内：作为messages传给LLM
+    # 作用：
+    # 多轮对话时，模型能看到之前的交互历史
+    # 每次 agent_loop 结束后，history 已经包含了所有消息（用户 → assistant → tool_result → assistant → ...）
+    # 下一次用户输入时，直接复用这个累积的 history
     history = []
     while True:
         try:
@@ -129,7 +151,7 @@ if __name__ == "__main__":
         if query.strip().lower() in ("q", "exit", ""):
             break
         history.append({"role": "user", "content": query})
-        agent_loop(history)
+        agent_loop(history)  # 这里传入history
         # Print the model's final text response
         response_content = history[-1]["content"]
         if isinstance(response_content, list):

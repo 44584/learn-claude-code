@@ -201,6 +201,10 @@ DENY_LIST = ["rm -rf /", "sudo", "shutdown", "reboot", "mkfs", "dd if=", "> /dev
 
 
 def check_deny_list(command: str) -> str | None:
+    """
+    - 返回None代表继续规则匹配；
+    - 返回str是拒绝。
+    """
     for pattern in DENY_LIST:
         if pattern in command:
             return f"Blocked: '{pattern}' is on the deny list"
@@ -238,7 +242,7 @@ def check_rules(tool_name: str, args: dict) -> str | None:
 
 # Gate 3: User approval — wait for confirmation after rule match
 def ask_user(tool_name: str, args: dict, reason: str) -> str:
-    """设置中断，从终端获取用户的输入"""
+    """阻塞，从终端获取用户的输入"""
     print(f"\n\033[33m⚠  {reason}\033[0m")
     print(f"   Tool: {tool_name}({args})")
     choice = input("   Allow? [y/N] ").strip().lower()
@@ -247,6 +251,7 @@ def ask_user(tool_name: str, args: dict, reason: str) -> str:
 
 # Pipeline: all three gates chained
 def check_permission(block) -> bool:
+    # 这样写是因为目前的deny_list只针对bash
     if block.name == "bash":
         reason = check_deny_list(block.input.get("command", ""))
         if reason:

@@ -106,7 +106,9 @@ def run_edit(path: str, old_text: str, new_text: str) -> str:
         text = file_path.read_text()
         if old_text not in text:
             return f"Error: text not found in {path}"
-        file_path.write_text(text.replace(old_text, new_text, 1)) # wirte_text是覆盖重写。文件中替换第一处匹配的文本
+        file_path.write_text(
+            text.replace(old_text, new_text, 1)
+        )  # wirte_text是覆盖重写。文件中替换第一处匹配的文本
         return f"Edited {path}"
     except Exception as e:
         return f"Error: {e}"
@@ -128,7 +130,7 @@ def run_glob(pattern: str) -> str:
 # ═══════════════════════════════════════════════════════════
 #  NEW in s02: 工具定义（s01 只有一个 bash，现在扩展到 5 个）
 # ═══════════════════════════════════════════════════════════
-
+# 这里没有对参数给出description字段，教学教程足够所以没有加。
 TOOLS = [
     {
         "name": "bash",

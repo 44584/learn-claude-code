@@ -137,6 +137,7 @@ def run_glob(pattern: str) -> str:
 
 
 def _normalize_todos(todos):
+    # 将模型调用todo_write的input参数，转化为list
     if isinstance(todos, str):
         try:
             todos = json.loads(todos)
@@ -231,6 +232,7 @@ TOOLS = [
         },
     },
     # s05: new tool
+    # todos是一个 (content和status)的列表
     {
         "name": "todo_write",
         "description": "Create and manage a task list for your current coding session.",

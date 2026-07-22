@@ -1,4 +1,4 @@
-这个教程着重将Agent差分成为Agency和Harness两个部分，认为Agency来自LLM的模型训练。Harness是教程的重点。
+这个教程着重将Agent拆分成为Agency和Harness两个部分，认为Agency来自LLM的模型训练。Harness是教程的重点。
 对Agent给出的定义是“一个通过训练学会了行动的模型，加上让它能在特定环境中工作的基础设施。”。
 
 Agency是感知、推理、行动的能力，来自神经网络的参数。

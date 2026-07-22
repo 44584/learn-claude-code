@@ -213,6 +213,7 @@ TOOL_HANDLERS = {
 #  NEW in s04: Hook System (s03 permission logic now via hooks)
 # ═══════════════════════════════════════════════════════════
 
+# 事件名->回调函数列表 的字典
 HOOKS = {"UserPromptSubmit": [], "PreToolUse": [], "PostToolUse": [], "Stop": []}
 
 
