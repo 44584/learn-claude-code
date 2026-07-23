@@ -339,9 +339,12 @@ def extract_text(content) -> str:
 def spawn_subagent(description: str) -> str:
     """Spawn a subagent with fresh messages[], return summary only."""
     print(f"\n\033[35m[Subagent spawned]\033[0m")
-    messages = [{"role": "user", "content": description}]  # fresh context
+    print(f"\tTask: {description}")
+    messages = [
+        {"role": "user", "content": description}
+    ]  # fresh context 干净的上下文环境
 
-    for _ in range(30):  # safety limit
+    for _ in range(30):  # safety limit 将subagent限制在有限轮次
         response = client.messages.create(
             model=MODEL,
             system=SUB_SYSTEM,
