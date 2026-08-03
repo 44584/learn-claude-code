@@ -51,7 +51,7 @@ if os.getenv("ANTHROPIC_BASE_URL"):
 
 WORKDIR = Path.cwd()
 SKILLS_DIR = WORKDIR / "skills"
-TRANSCRIPT_DIR = WORKDIR / ".transcripts"
+TRANSCRIPT_DIR = WORKDIR / ".transcripts"  # 这个是L4落盘的位置
 TOOL_RESULTS_DIR = WORKDIR / ".task_outputs" / "tool-results"
 client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
 MODEL = os.environ["MODEL_ID"]
@@ -371,7 +371,7 @@ PERSIST_THRESHOLD = 30000
 
 
 def estimate_size(msgs):
-    return len(str(msgs))
+    return len(str(msgs))  # 朴实无华的简化，直接返回len
 
 
 def _block_type(block):
@@ -381,19 +381,22 @@ def _block_type(block):
 
 
 def _message_has_tool_use(msg):
+    """这个是用于判断assistant是否涉及tool调用"""
     if msg.get("role") != "assistant":
         return False
     content = msg.get("content")
     if not isinstance(content, list):
-        return False
+        return False  # 因为tool调用是以列表形式存储在assistant的content中的
     return any(_block_type(block) == "tool_use" for block in content)
 
 
 def _is_tool_result_message(msg):
+    """这个是用于判断role是否涉及tool_result"""
     if msg.get("role") != "user":
         return False
     content = msg.get("content")
     if not isinstance(content, list):
+        # tool_result是以列表形式存储在user的content中的
         return False
     return any(
         isinstance(block, dict) and block.get("type") == "tool_result"
@@ -403,13 +406,17 @@ def _is_tool_result_message(msg):
 
 # L1: snipCompact — trim middle messages
 def snip_compact(messages, max_messages=50):
+    """列表过长时，裁剪中间消息"""
     if len(messages) <= max_messages:
         return messages
     keep_head, keep_tail = 3, max_messages - 3
     head_end, tail_start = keep_head, len(messages) - keep_tail
+
+    # 这是为了不让tool_use的assistant与其对应的tool_result的user消息分隔
     if head_end > 0 and _message_has_tool_use(messages[head_end - 1]):
         while head_end < len(messages) and _is_tool_result_message(messages[head_end]):
             head_end += 1
+    # 与上面的if同样的道理
     if (
         tail_start > 0
         and tail_start < len(messages)
@@ -417,8 +424,12 @@ def snip_compact(messages, max_messages=50):
         and _message_has_tool_use(messages[tail_start - 1])
     ):
         tail_start -= 1
+
+    # 如果有交叉，说明无中间部分舍弃
     if head_end >= tail_start:
         return messages
+
+    # 这个设计很简洁，舍弃中间messages是user的消息
     snipped = tail_start - head_end
     return (
         messages[:head_end]
@@ -428,19 +439,23 @@ def snip_compact(messages, max_messages=50):
 
 
 # L2: microCompact — old result placeholders
-def collect_tool_results(messages):
+
+# 这里的机制比较巧妙，_collect_tool_results 将需要处理的block引用收集起来，
+# 所以 blocks 里的每个 block 和 messages[mi]["content"][bi] 指向同一个字典对象，
+# 然后micro_compact只处理_collect_tool_results返回的引用列表，就可以修改messages
+def _collect_tool_results(messages):
     blocks = []
     for mi, msg in enumerate(messages):
         if msg.get("role") != "user" or not isinstance(msg.get("content"), list):
             continue
         for bi, block in enumerate(msg["content"]):
             if isinstance(block, dict) and block.get("type") == "tool_result":
-                blocks.append((mi, bi, block))
+                blocks.append((mi, bi, block)) # Python 里"赋值"和"放进容器"都不会触发拷贝，只是传递引用。
     return blocks
 
 
 def micro_compact(messages):
-    tool_results = collect_tool_results(messages)
+    tool_results = _collect_tool_results(messages)
     if len(tool_results) <= KEEP_RECENT:
         return messages
     for _, _, block in tool_results[:-KEEP_RECENT]:
@@ -461,6 +476,7 @@ def persist_large_output(tool_use_id, output):
 
 
 def tool_result_budget(messages, max_bytes=200_000):
+    """需要理解一个message可能包含多个tool_result，落盘的单位是tool_result而非message"""
     last = messages[-1] if messages else None
     if (
         not last
@@ -468,6 +484,7 @@ def tool_result_budget(messages, max_bytes=200_000):
         or not isinstance(last.get("content"), list)
     ):
         return messages
+    # 一个message可能包含多个tool_result条目
     blocks = [
         (i, b)
         for i, b in enumerate(last["content"])
@@ -479,6 +496,7 @@ def tool_result_budget(messages, max_bytes=200_000):
     ranked = sorted(
         blocks, key=lambda p: len(str(p[1].get("content", ""))), reverse=True
     )
+    # 每次落盘，只处理一个tool_result条目
     for _, block in ranked:
         if total <= max_bytes:
             break
@@ -526,6 +544,7 @@ def compact_history(messages):
     transcript_path = write_transcript(messages)
     print(f"[transcript saved: {transcript_path}]")
     summary = summarize_history(messages)
+    # 同样的，生成摘要是user方面的操作，放在user消息中
     return [{"role": "user", "content": f"[Compacted]\n\n{summary}"}]
 
 
@@ -698,6 +717,8 @@ HOOKS["PreToolUse"].append(log_hook)
 #  agent_loop — s08 core: run compaction pipeline before LLM
 # ═══════════════════════════════════════════════════════════
 
+# 需要注意不同压缩方式的调用时机
+
 MAX_REACTIVE_RETRIES = 1  # retry limit for reactive compact
 
 
@@ -706,6 +727,7 @@ def agent_loop(messages: list):
     while True:
         # s08 change: three preprocessors (0 API calls, cheap first)
         # Order matches CC source: budget → snip → micro
+        # 注意先L3将大的tool_result持久化，然后L1，L2
         messages[:] = tool_result_budget(messages)  # L3: persist large results first
         messages[:] = snip_compact(messages)  # L1: trim middle
         messages[:] = micro_compact(messages)  # L2: old result placeholders
@@ -730,12 +752,14 @@ def agent_loop(messages: list):
                 or "too many tokens" in str(e).lower()
             ) and reactive_retries < MAX_REACTIVE_RETRIES:
                 print("[reactive compact]")
+                # 意外处理
                 messages[:] = reactive_compact(messages)
                 reactive_retries += 1
                 continue
             raise
 
         messages.append({"role": "assistant", "content": response.content})
+        
         if response.stop_reason != "tool_use":
             return
 
@@ -746,8 +770,10 @@ def agent_loop(messages: list):
             print(f"\033[36m> {block.name}\033[0m")
 
             # s08: compact tool triggers compact_history, not a no-op string
+            # LLM可以主动调用
             if block.name == "compact":
                 messages[:] = compact_history(messages)
+                # 还要补充一个工具调用的结果
                 results.append(
                     {
                         "type": "tool_result",
