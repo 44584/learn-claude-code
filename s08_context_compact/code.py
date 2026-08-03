@@ -429,7 +429,7 @@ def snip_compact(messages, max_messages=50):
     if head_end >= tail_start:
         return messages
 
-    # 这个设计很简洁，舍弃中间messages是user的消息
+    # 这个设计很简洁，舍弃中间消息"这个动作本身被记录成了一条 user 消息
     snipped = tail_start - head_end
     return (
         messages[:head_end]

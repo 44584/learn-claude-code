@@ -2,6 +2,8 @@
 
 采用的具体策略是：先跑便宜的压缩，后跑贵的压缩。
 
+四层职责正交：L1 管消息条数爆炸，L2 管历史 tool_result 累积，L3 管单轮大结果，L4 管整体超预算。
+
 - L1 snip_compact 裁掉无关旧对话
   这一层采取的策略是，直接裁掉中间对话。
   - 具体操作：
@@ -12,9 +14,9 @@
   但是这一层没有解决tool_result内容过长的问题，L2会解决它。
 
 - L2 micro_compact 旧工具结果占位
-  这一层减少tool_result的数量
+  这一层将旧tool_result压缩
   - 具体操作：
-    保留最近三条tool_result的完整内容，更旧的替换为一行占位符（提示LLM如果需要结果就重跑）
+    保留最近三条tool_result的完整内容，更旧的且长度超过120的替换为一行占位符（提示LLM如果需要结果就重跑）
 
     _但是这个结果可能和旧结果不一致_
 
@@ -36,7 +38,7 @@
     3. 所有旧消息替换为一条摘要
 
 - 应急处理
-  有时api还是返回413（prompt_too_long），这时出发reactive_compact，只生成后5条消息的摘要
+  有时api还是返回413（prompt_too_long），这时触发reactive_compact，保持后5条消息不动，为其余消息生成摘要
 
 组合起来，核心原则是 cheap first, expensive last
 
@@ -47,7 +49,7 @@
 
 L3（budget）在 L2（micro）前面，因为 micro 会把旧的大 tool_result 替换成一行占位符，budget 必须在那之前把完整内容落盘。
 
-看具体代码的细节时，需要了解[message的结构](./note_s01.md)
+看具体代码的细节时，需要了解[message的结构](./note_s01.md#看了s08后回顾)
 
 # 执行结果
 
