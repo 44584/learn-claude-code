@@ -24,5 +24,92 @@ There are **3,139** files under the current directory (including all subdirector
 这里的设计中，role 只有 assistant 和 user 两种（而没有tool），tool_result 作为 content block 放在 user 的 content 中。
 保持对话历史中每条消息的 role 清晰：用户提供输入（包括工具结果），助手给出回复（包括工具调用）。
 
-
 [代码](../s01_agent_loop/code.py)
+
+# 看了s08后回顾
+
+## response的格式
+
+response的结构
+
+```json
+{
+"id": "msg_xxx",
+"type": "message",
+"role": "assistant",
+"content": [ /* 这里是 block 数组 */ ],
+"model": "...",
+"stop_reason": "end_turn" | "tool_use" | "max_tokens" | "stop_sequence",
+"usage": { "input_tokens": N, "output_tokens": M }
+}
+```
+
+纯文本
+
+```json
+{
+  "content": [{ "type": "text", "text": "你好！" }],
+  "stop_reason": "end_turn"
+}
+```
+
+tool_use
+
+```json
+{
+  "content": [
+    { "type": "text", "text": "让我查一下" },
+    {
+      "type": "tool_use",
+      "id": "toolu_xxx",
+      "name": "bash",
+      "input": { "command": "ls" }
+    }
+  ],
+  "stop_reason": "tool_use"
+}
+```
+
+## message的格式
+
+需要注意的是message如何收集response，形成自己的格式.
+
+对于assistant消息：
+
+```json
+{
+	"role":"assistant",
+	"content": response.content
+}
+```
+
+对于user消息，分为user输入的消息和工具结果消息这两种。
+
+user输入：
+
+```json
+{
+	"role":"user",
+	"content": input
+}
+```
+
+工具结果：
+
+```json
+{
+	"role":"user",
+	"content": [
+		{
+			"type":"tool_result",
+			"tool_use_id":id1,
+			"content":output1
+		},
+		{
+			"type":"tool_result",
+			"tool_use_id":id2,
+			"content":output2
+		},
+	]
+}
+```
