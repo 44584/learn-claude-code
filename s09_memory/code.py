@@ -155,7 +155,10 @@ def _select_relevant_memories(messages: list, max_items: int = 5) -> list[str]:
     for msg in reversed(messages):
         if msg.get("role") == "user":
             content = msg.get("content", "")
-            # 这里需要理解message的dict格式，message的content是response的content
+            # 这里需要理解message的dict格式
+            # user 文本消息的 content 是 str
+            # tool_result 消息的 content 是 dict 列表，
+            # assistant 消息的 content 才是 response.content
             if isinstance(content, list):
                 content = " ".join(
                     str(getattr(b, "text", ""))
@@ -177,7 +180,7 @@ def _select_relevant_memories(messages: list, max_items: int = 5) -> list[str]:
         catalog_lines.append(f"{i}: {f['name']} — {f['description']}")
     catalog = "\n".join(catalog_lines)
 
-    # 提示词要求返回JSON格式的相关记忆索引
+    # 提示词要求返回JSON格式的相关记忆的数组索引
     prompt = (
         "Given the recent conversation and the memory catalog below, "
         "select the indices of memories that are clearly relevant. "
@@ -195,6 +198,7 @@ def _select_relevant_memories(messages: list, max_items: int = 5) -> list[str]:
         )
         text = extract_text(response.content).strip()
         # Extract JSON array from response
+        # 从索引映射到name，最终返回name的list
         match = re.search(r"\[.*?\]", text, re.DOTALL)
         if match:
             indices = json.loads(match.group())
@@ -705,7 +709,7 @@ def reactive_compact(msgs):
 #  Tool Definitions (skeleton — fewer tools to focus on memory)
 # ═══════════════════════════════════════════════════════════
 
-# 确实fewer，少了todoWrite
+# 确实fewer，少了todoWrite，load_skill 和 compact 工具，整个 hook 系统（HOOKS/trigger_hooks/permission/log）也没了
 
 TOOLS = [
     {
@@ -827,13 +831,15 @@ def agent_loop(messages: list):
                 and memory_turn is not None
                 and memory_turn < len(messages)
             ):
-                request_messages = messages.copy()  # 注意这里是浅拷贝，目的是保证下面的操作不会改变原本的messages的元素的指向。list.copy() 会创建一个新的列表对象，新列表中的元素是对原列表中元素的引用
+                request_messages = (
+                    messages.copy()
+                )  # 注意这里是浅拷贝，目的是保证下面的操作不会改变原本的messages的元素的指向。list.copy() 会创建一个新的列表对象，新列表中的元素是对原列表中元素的引用
                 request_messages[memory_turn] = {
                     **messages[memory_turn],
                     "content": memories_content
                     + "\n\n"
                     + messages[memory_turn]["content"],
-                } # 这里将request_messages列表中的对应元素，指向新的内容。浅拷贝保证了不影响原来的指向
+                }  # 这里将request_messages列表中的对应元素，指向新的内容。浅拷贝保证了不影响原来的指向
             response = client.messages.create(
                 model=MODEL,
                 system=system,

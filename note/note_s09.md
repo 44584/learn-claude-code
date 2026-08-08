@@ -138,3 +138,18 @@ I'll apply both going forward. One note: `tests/test.py` currently uses a double
 ```
 
 ```
+
+# codex指正与补充
+
+使用时，用户主动要求记住，会发生两层保障：
+
+1. 模型主动调用write_file，按照SYSTEM PROMPT，完成记忆文件与索引文件的构建；
+2. harness事后，根据对话内容完成提取和构建。
+
+_如果模型不守规矩，同一偏好可能被写成两个文件。CC 有显式的跳过逻辑（"如果主 Agent已写入记忆文件则跳过提取"）_
+
+关于session memory与user memory
+
+README 专门有一节讲：user memory 管跨会话，session memory 管"compact 之后当前会话还要保留什么"
+
+在教学版代码中，session memory就是messages列表；user memory则是当前的实现
