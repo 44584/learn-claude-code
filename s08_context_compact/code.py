@@ -440,6 +440,7 @@ def snip_compact(messages, max_messages=50):
 
 # L2: microCompact — old result placeholders
 
+
 # 这里的机制比较巧妙，_collect_tool_results 将需要处理的block引用收集起来，
 # 所以 blocks 里的每个 block 和 messages[mi]["content"][bi] 指向同一个字典对象，
 # 然后micro_compact只处理_collect_tool_results返回的引用列表，就可以修改messages
@@ -450,7 +451,9 @@ def _collect_tool_results(messages):
             continue
         for bi, block in enumerate(msg["content"]):
             if isinstance(block, dict) and block.get("type") == "tool_result":
-                blocks.append((mi, bi, block)) # Python 里"赋值"和"放进容器"都不会触发拷贝，只是传递引用。
+                blocks.append(
+                    (mi, bi, block)
+                )  # Python 里"赋值"和"放进容器"都不会触发拷贝，只是传递引用。
     return blocks
 
 
@@ -458,14 +461,19 @@ def micro_compact(messages):
     tool_results = _collect_tool_results(messages)
     if len(tool_results) <= KEEP_RECENT:
         return messages
-    for _, _, block in tool_results[:-KEEP_RECENT]:
-        if len(block.get("content", "")) > 120:
+    for _, _, block in tool_results[
+        :-KEEP_RECENT
+    ]:  # 注意这里保留的单位是tool_result而不是message
+        if (
+            len(block.get("content", "")) > 120
+        ):  # 这里的120判断避免了处理过短而无需处理的tool_reslut
             block["content"] = "[Earlier tool result compacted. Re-run if needed.]"
     return messages
 
 
 # L3: toolResultBudget — persist large results to disk
 def persist_large_output(tool_use_id, output):
+    """返回持久化消息以及位置和preview"""
     if len(output) <= PERSIST_THRESHOLD:
         return output
     TOOL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -477,6 +485,7 @@ def persist_large_output(tool_use_id, output):
 
 def tool_result_budget(messages, max_bytes=200_000):
     """需要理解一个message可能包含多个tool_result，落盘的单位是tool_result而非message"""
+    # L3处理的是最后一条message
     last = messages[-1] if messages else None
     if (
         not last
@@ -496,7 +505,7 @@ def tool_result_budget(messages, max_bytes=200_000):
     ranked = sorted(
         blocks, key=lambda p: len(str(p[1].get("content", ""))), reverse=True
     )
-    # 每次落盘，只处理一个tool_result条目
+    # 每次落盘，只处理一个tool_result条目，直到总长不超过阈值
     for _, block in ranked:
         if total <= max_bytes:
             break
@@ -759,7 +768,7 @@ def agent_loop(messages: list):
             raise
 
         messages.append({"role": "assistant", "content": response.content})
-        
+
         if response.stop_reason != "tool_use":
             return
 
