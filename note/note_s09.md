@@ -20,7 +20,121 @@
   - project 正在发生什么
   - reference 东西在哪里找
 
-
 Memory适合保存什么？\
 保存跨对话依然有效的信息。比如用户偏好，反复出现的反馈、项目背景、常用入口、排查线索。\
 关注以后还会用到什么并通过 索引+按需加载，把信息带回当前对话。
+
+# 运行代码检验
+
+确实出现了新建记忆文件和索引，以及按照记忆工作。
+
+````python
+(learn-claude-code) gkunix@laptopGK:~/workspace/learn-claude-code$ python ./s09_memory/code.py
+s09: Memory — persistent cross-session knowledge
+输入问题，回车发送。输入 q 退出。
+
+[36ms09 >> [0mI prefer using tabs for indentation, not spaces. Remember that.
+> bash
+total 256
+drwxr-xr-x 34 gkunix gkunix  4096 Aug  8 13:23 .
+drwxr-xr-x  7 gkunix gkunix  4096 Jul 22 19:38 ..
+-rw-r--r--  1 gkunix gkunix  2547 Jul 15 17:15 .env
+-rw-r--r--  1 gkunix gkunix  2524 Jul 1
+> bash
+total 8
+drwxr-xr-x  2 gkunix gkunix 4096 Aug  8 13:23 .
+drwxr-xr-x 34 gkunix gkunix 4096 Aug  8 13:23 ..
+=== /home/gkunix/workspace/learn-claude-code/.memory/* ===
+cat: '/home/gkunix/workspace/learn-c
+> bash
+/home/gkunix/workspace/learn-claude-code/s09_memory/code.py
+/home/gkunix/workspace/learn-claude-code/s09_memory/images/memory-subsystems.en.svg
+/home/gkunix/workspace/learn-claude-code/s09_memory/imag
+> bash
+# s09: Memory — 压缩会丢细节，要有一层不丢的
+
+[中文](README.md) · [English](README.en.md) · [日本語](README.ja.md)
+
+s01 → ... → s07 → s08 → `s09` → [s10](../s10_system_prompt/) → s11 → ... → s20
+> *"压缩会丢细节, 要有一层不丢的"* —
+> write_file
+Wrote 243 bytes to /home/gkunix/workspace/learn-claude-code/.memory/user-preference-tabs.md
+> write_file
+Wrote 86 bytes to /home/gkunix/workspace/learn-claude-code/.memory/MEMORY.md
+Remembered! ✅
+
+I've stored your preference as a `user` memory:
+
+- **`.memory/user-preference-tabs.md`** — the full memory file with metadata (`name`, `description`, `type`)
+- **`.memory/MEMORY.md`** — the index, which gets injected into the system prompt so the memory can be matched and loaded on demand
+
+**Rule going forward:** I'll always use tabs for indentation, never spaces, when writing or editing files.
+
+Note this only takes effect for future turns in this workspace once the memory system loads the index — let me know if you'd like me to apply it to any existing files right now.
+
+[36ms09 >> [0mCreate a Python file called test.py under ./tests/
+> bash
+total 36
+drwxr-xr-x  2 gkunix gkunix 4096 Jul 14 16:28 .
+drwxr-xr-x 34 gkunix gkunix 4096 Aug  8 13:23 ..
+-rw-r--r--  1 gkunix gkunix  603 Jul 14 16:28 test_agents_smoke.py
+-rw-r--r--  1 gkunix gkunix
+> write_file
+Wrote 123 bytes to /home/gkunix/workspace/learn-claude-code/tests/test.py
+> bash
+"""Example test file. Indentation uses tabs."""$
+$
+$
+def test_example():$
+^I"""A simple placeholder test."""$
+^Iassert 1 + 1 == 2$
+---
+compiles OK
+Done! Created `tests/test.py`:
+
+```python
+"""Example test file. Indentation uses tabs."""
+
+
+def test_example():
+        """A simple placeholder test."""
+        assert 1 + 1 == 2
+````
+
+- ✅ Indentation uses **tabs** (`^I` confirmed via `cat -A`)
+- ✅ File compiles cleanly (`py_compile` passed)
+
+Want me to replace the placeholder test with something useful, or add tests for a specific module?
+
+[36ms09 >> [0mWhat did I tell you about my preferences?
+You told me you **prefer using tabs for indentation, not spaces**. I saved that as a memory (`user-preference-tabs`) and have been applying it — e.g., `tests/test.py` was written with tab indentation.
+
+[36ms09 >> [0mI also prefer single quotes over double quotes for strings.
+
+> bash
+
+- [user-preference-tabs](user-preference-tabs.md) — User prefers tabs for indentation
+  MEMORY.md
+  user-preference-tabs.md
+
+  > write_file
+  > Wrote 319 bytes to /home/gkunix/workspace/learn-claude-code/.memory/user-preference-single-quotes.md
+  > write_file
+  > Wrote 214 bytes to /home/gkunix/workspace/learn-claude-code/.memory/MEMORY.md
+  > Done! ✅ New memory saved:
+
+- **`.memory/user-preference-single-quotes.md`** — `User prefers single quotes over double quotes for strings`
+- **`.memory/MEMORY.md`** — index updated
+
+So now your preferences on record are:
+
+1. **Tabs** for indentation, not spaces
+2. **Single quotes** for strings, not double quotes
+
+I'll apply both going forward. One note: `tests/test.py` currently uses a double-quoted docstring — want me to switch it to single quotes?
+
+[36ms09 >> [0m
+
+```
+
+```

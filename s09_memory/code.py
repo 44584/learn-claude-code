@@ -60,7 +60,10 @@ MEMORY_TYPES = ["user", "feedback", "project", "reference"]
 
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """单个记忆的.md文件与SKILL.md格式类似，都是使用---分隔的YAML元信息与具体内容"""
+    """
+    单个记忆的.md文件与SKILL.md格式类似，都是使用---分隔的YAML元信息与具体内容\
+    这里将文件内容解析成对应的字典与字符串并返回
+    """
     if not text.startswith("---"):
         return {}, text
     parts = text.split("---", 2)
@@ -74,10 +77,10 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
     return meta, parts[2].strip()
 
 
-def write_memory_file(name: str, mem_type: str, description: str, body: str):
+def write_memory_file(name: str, mem_type: str, description: str, body: str) -> Path:
     """Write a single memory file with YAML frontmatter."""
     slug = name.lower().replace(" ", "-").replace("/", "-")
-    filename = f"{slug}.md"
+    filename = f"{slug}.md"  # 记忆的name和文件名一致
     filepath = MEMORY_DIR / filename
     filepath.write_text(
         f"---\nname: {name}\ndescription: {description}\ntype: {mem_type}\n---\n\n{body}\n"
@@ -95,7 +98,9 @@ def _rebuild_index():
         raw = f.read_text()
         meta, body = _parse_frontmatter(raw)
         name = meta.get("name", f.stem)
-        desc = meta.get("description", body.split("\n")[0][:80])
+        desc = meta.get(
+            "description", body.split("\n")[0][:80]
+        )  # 这个default的设计不错
         lines.append(f"- [{name}]({f.name}) — {desc}")
     MEMORY_INDEX.write_text("\n".join(lines) + "\n" if lines else "")
 
@@ -117,7 +122,8 @@ def read_memory_file(filename: str) -> str | None:
 
 
 def list_memory_files() -> list[dict]:
-    """List all memory files with metadata."""
+    """List all memory files with metadata.返回了包括body在内的所有信息"""
+
     result = []
     for f in sorted(MEMORY_DIR.glob("*.md")):
         if f.name == "MEMORY.md":
@@ -136,10 +142,10 @@ def list_memory_files() -> list[dict]:
     return result
 
 
-def select_relevant_memories(messages: list, max_items: int = 5) -> list[str]:
+def _select_relevant_memories(messages: list, max_items: int = 5) -> list[str]:
     """Select relevant memory filenames by matching recent conversation against
     memory names/descriptions. Uses a simple LLM call (or falls back to keyword
-    matching on name+description)."""
+    matching on name+description).返回相关记忆的name"""
     files = list_memory_files()
     if not files:
         return []
@@ -149,6 +155,7 @@ def select_relevant_memories(messages: list, max_items: int = 5) -> list[str]:
     for msg in reversed(messages):
         if msg.get("role") == "user":
             content = msg.get("content", "")
+            # 这里需要理解message的dict格式，message的content是response的content
             if isinstance(content, list):
                 content = " ".join(
                     str(getattr(b, "text", ""))
@@ -170,6 +177,7 @@ def select_relevant_memories(messages: list, max_items: int = 5) -> list[str]:
         catalog_lines.append(f"{i}: {f['name']} — {f['description']}")
     catalog = "\n".join(catalog_lines)
 
+    # 提示词要求返回JSON格式的相关记忆索引
     prompt = (
         "Given the recent conversation and the memory catalog below, "
         "select the indices of memories that are clearly relevant. "
@@ -177,7 +185,7 @@ def select_relevant_memories(messages: list, max_items: int = 5) -> list[str]:
         "If none are relevant, return [].\n\n"
         f"Recent conversation:\n{recent}\n\n"
         f"Memory catalog:\n{catalog}"
-    )
+    )  # 这里使用了Python的字符串字面量自动合并的语法
 
     try:
         response = client.messages.create(
@@ -214,7 +222,7 @@ def select_relevant_memories(messages: list, max_items: int = 5) -> list[str]:
 
 def load_memories(messages: list) -> str:
     """Load relevant memory content for injection into context."""
-    selected_files = select_relevant_memories(messages)
+    selected_files = _select_relevant_memories(messages)
     if not selected_files:
         return ""
 
@@ -230,6 +238,7 @@ def load_memories(messages: list) -> str:
 def extract_memories(messages: list):
     """Extract new memories from recent dialogue. Runs after each turn."""
     # Collect recent conversation text
+    # 这里简单地提取后10个message的文本
     dialogue_parts = []
     for msg in messages[-10:]:
         role = msg.get("role", "?")
@@ -255,6 +264,7 @@ def extract_memories(messages: list):
         else "(none)"
     )
 
+    # 力大砖飞，简简单单LLM提取memory，朴实无华。不过这种确实比硬编码规则好得多
     prompt = (
         "Extract user preferences, constraints, or project facts from this dialogue.\n"
         "Return a JSON array. Each item: {name, type, description, body}.\n"
@@ -299,7 +309,7 @@ CONSOLIDATE_THRESHOLD = 10
 
 
 def consolidate_memories():
-    """Merge duplicate/stale memories. Triggered when file count ≥ threshold."""
+    """Merge duplicate/stale memories. Triggered when file count ≥ threshold.依旧LLM整理记忆"""
     files = list_memory_files()
     if len(files) < CONSOLIDATE_THRESHOLD:
         return
@@ -695,6 +705,8 @@ def reactive_compact(msgs):
 #  Tool Definitions (skeleton — fewer tools to focus on memory)
 # ═══════════════════════════════════════════════════════════
 
+# 确实fewer，少了todoWrite
+
 TOOLS = [
     {
         "name": "bash",
@@ -777,7 +789,8 @@ def agent_loop(messages: list):
     reactive_retries = 0
     # s09: inject relevant memory content into the current user turn
     memories_content = load_memories(messages)
-    memory_turn = (
+    # 给它标注一下类型
+    memory_turn: int | None = (
         len(messages) - 1
         if messages and isinstance(messages[-1].get("content"), str)
         else None
@@ -805,6 +818,8 @@ def agent_loop(messages: list):
             print("[auto compact]")
             messages[:] = compact_history(messages)
 
+        # 注意，记忆只会注入当前轮次的message，而且是暂时的，下一轮对话时，这个message就没有相关记忆了
+        # 具体的实现是使用了 messages.copy()
         try:
             request_messages = messages
             if (
@@ -812,13 +827,13 @@ def agent_loop(messages: list):
                 and memory_turn is not None
                 and memory_turn < len(messages)
             ):
-                request_messages = messages.copy()
+                request_messages = messages.copy()  # 注意这里是浅拷贝，目的是保证下面的操作不会改变原本的messages的元素的指向。list.copy() 会创建一个新的列表对象，新列表中的元素是对原列表中元素的引用
                 request_messages[memory_turn] = {
                     **messages[memory_turn],
                     "content": memories_content
                     + "\n\n"
                     + messages[memory_turn]["content"],
-                }
+                } # 这里将request_messages列表中的对应元素，指向新的内容。浅拷贝保证了不影响原来的指向
             response = client.messages.create(
                 model=MODEL,
                 system=system,
@@ -839,6 +854,7 @@ def agent_loop(messages: list):
             raise
 
         messages.append({"role": "assistant", "content": response.content})
+        # 判断一轮是否结束了，如果结束了，就提取记忆，然后整理记忆
         if response.stop_reason != "tool_use":
             # s09: extract from pre-compression snapshot for full fidelity
             extract_memories(pre_compress)
