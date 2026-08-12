@@ -29,7 +29,8 @@ from pathlib import Path
 
 try:
     import readline
-    readline.parse_and_bind('set bind-tty-special-chars off')
+
+    readline.parse_and_bind("set bind-tty-special-chars off")
 except ImportError:
     pass
 
@@ -49,16 +50,16 @@ FALLBACK_MODEL = os.getenv("FALLBACK_MODEL_ID")
 
 # ── Constants ──
 
-ESCALATED_MAX_TOKENS = 64000
+ESCALATED_MAX_TOKENS = 64000  # 提升后的最大token限制
 DEFAULT_MAX_TOKENS = 8000
-MAX_RECOVERY_RETRIES = 3
-MAX_RETRIES = 10
+MAX_RECOVERY_RETRIES = 3  # 用于输出被截断
+MAX_RETRIES = 10  # 用于临时故障
 BASE_DELAY_MS = 500
-MAX_CONSECUTIVE_529 = 3
+MAX_CONSECUTIVE_529 = 3  # 专用于529限流的重试
 CONTINUATION_PROMPT = (
     "Output token limit hit. Resume directly — "
     "no apology, no recap. Pick up mid-thought."
-)
+)  # 超出最大token限制的重试提示词
 
 # ── Prompt Assembly (from s10, synced) ──
 
@@ -71,9 +72,11 @@ PROMPT_SECTIONS = {
 
 
 def assemble_system_prompt(context: dict) -> str:
-    sections = [PROMPT_SECTIONS["identity"],
-                PROMPT_SECTIONS["tools"],
-                PROMPT_SECTIONS["workspace"]]
+    sections = [
+        PROMPT_SECTIONS["identity"],
+        PROMPT_SECTIONS["tools"],
+        PROMPT_SECTIONS["workspace"],
+    ]
     memories = context.get("memories", "")
     if memories:
         sections.append(f"Relevant memories:\n{memories}")
@@ -101,6 +104,7 @@ def get_system_prompt(context: dict) -> str:
 
 # ── Tools (unchanged) ──
 
+
 def safe_path(p: str) -> Path:
     path = (WORKDIR / p).resolve()
     if not path.is_relative_to(WORKDIR):
@@ -110,8 +114,14 @@ def safe_path(p: str) -> Path:
 
 def run_bash(command: str) -> str:
     try:
-        r = subprocess.run(command, shell=True, cwd=WORKDIR,
-                           capture_output=True, text=True, timeout=120)
+        r = subprocess.run(
+            command,
+            shell=True,
+            cwd=WORKDIR,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
         out = (r.stdout + r.stderr).strip()
         return out[:50000] if out else "(no output)"
     except subprocess.TimeoutExpired:
@@ -139,20 +149,33 @@ def run_write(path: str, content: str) -> str:
 
 
 TOOLS = [
-    {"name": "bash", "description": "Run a shell command.",
-     "input_schema": {"type": "object",
-                      "properties": {"command": {"type": "string"}},
-                      "required": ["command"]}},
-    {"name": "read_file", "description": "Read file contents.",
-     "input_schema": {"type": "object",
-                      "properties": {"path": {"type": "string"},
-                                     "limit": {"type": "integer"}},
-                      "required": ["path"]}},
-    {"name": "write_file", "description": "Write content to a file.",
-     "input_schema": {"type": "object",
-                      "properties": {"path": {"type": "string"},
-                                     "content": {"type": "string"}},
-                      "required": ["path", "content"]}},
+    {
+        "name": "bash",
+        "description": "Run a shell command.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"command": {"type": "string"}},
+            "required": ["command"],
+        },
+    },
+    {
+        "name": "read_file",
+        "description": "Read file contents.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}, "limit": {"type": "integer"}},
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "write_file",
+        "description": "Write content to a file.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
+            "required": ["path", "content"],
+        },
+    },
 ]
 
 TOOL_HANDLERS = {"bash": run_bash, "read_file": run_read, "write_file": run_write}
@@ -160,8 +183,11 @@ TOOL_HANDLERS = {"bash": run_bash, "read_file": run_read, "write_file": run_writ
 
 # ── Error Recovery (s11 new) ──
 
+
+# 这里定义了恢复状态
 class RecoveryState:
     """Track recovery attempts across the loop."""
+
     def __init__(self):
         self.has_escalated = False
         self.recovery_count = 0
@@ -170,11 +196,12 @@ class RecoveryState:
         self.current_model = PRIMARY_MODEL
 
 
+# 计算429/529的退避时间, 指数退避+随机抖动
 def retry_delay(attempt, retry_after=None):
     """Exponential backoff with jitter. Retry-After takes priority."""
     if retry_after:
         return retry_after
-    base = min(BASE_DELAY_MS * (2 ** attempt), 32000) / 1000
+    base = min(BASE_DELAY_MS * (2**attempt), 32000) / 1000
     jitter = random.uniform(0, base * 0.25)
     return base + jitter
 
@@ -194,8 +221,10 @@ def with_retry(fn, state: RecoveryState):
             # 429 rate limit -> exponential backoff
             if "ratelimit" in name.lower() or "429" in msg:
                 delay = retry_delay(attempt)
-                print(f"  \033[33m[429 rate limit] retry {attempt+1}/{MAX_RETRIES},"
-                      f" wait {delay:.1f}s\033[0m")
+                print(
+                    f"  \033[33m[429 rate limit] retry {attempt+1}/{MAX_RETRIES},"
+                    f" wait {delay:.1f}s\033[0m"
+                )
                 time.sleep(delay)
                 continue
 
@@ -206,15 +235,21 @@ def with_retry(fn, state: RecoveryState):
                     if FALLBACK_MODEL:
                         state.current_model = FALLBACK_MODEL
                         state.consecutive_529 = 0
-                        print(f"  \033[31m[529 x{MAX_CONSECUTIVE_529}]"
-                              f" switching to {FALLBACK_MODEL}\033[0m")
+                        print(
+                            f"  \033[31m[529 x{MAX_CONSECUTIVE_529}]"
+                            f" switching to {FALLBACK_MODEL}\033[0m"
+                        )
                     else:
                         state.consecutive_529 = 0
-                        print(f"  \033[31m[529 x{MAX_CONSECUTIVE_529}]"
-                              f" no FALLBACK_MODEL_ID configured, continuing retry\033[0m")
+                        print(
+                            f"  \033[31m[529 x{MAX_CONSECUTIVE_529}]"
+                            f" no FALLBACK_MODEL_ID configured, continuing retry\033[0m"
+                        )
                 delay = retry_delay(attempt)
-                print(f"  \033[33m[529 overloaded] retry {attempt+1}/{MAX_RETRIES},"
-                      f" wait {delay:.1f}s\033[0m")
+                print(
+                    f"  \033[33m[529 overloaded] retry {attempt+1}/{MAX_RETRIES},"
+                    f" wait {delay:.1f}s\033[0m"
+                )
                 time.sleep(delay)
                 continue
 
@@ -226,10 +261,12 @@ def with_retry(fn, state: RecoveryState):
 def is_prompt_too_long_error(e: Exception) -> bool:
     """Check whether an API error indicates prompt/context too long."""
     msg = str(e).lower()
-    return (("prompt" in msg and "long" in msg)
-            or "prompt_is_too_long" in msg
-            or "context_length_exceeded" in msg
-            or "max_context_window" in msg)
+    return (
+        ("prompt" in msg and "long" in msg)
+        or "prompt_is_too_long" in msg
+        or "context_length_exceeded" in msg
+        or "max_context_window" in msg
+    )
 
 
 def reactive_compact(messages: list) -> list:
@@ -239,12 +276,18 @@ def reactive_compact(messages: list) -> list:
     retention since s08/s09 already cover LLM-based compact."""
     print("  \033[31m[reactive compact] trimming to last 5 messages\033[0m")
     tail = messages[-5:]
-    return [{"role": "user",
-             "content": "[Reactive compact] Earlier conversation trimmed. "
-                        "Continue from where you left off."}, *tail]
+    return [
+        {
+            "role": "user",
+            "content": "[Reactive compact] Earlier conversation trimmed. "
+            "Continue from where you left off.",
+        },
+        *tail,
+    ]
 
 
 # ── Context ──
+
 
 def update_context(context: dict, messages: list) -> dict:
     """Derive context from real state: which tools exist, whether memory files exist."""
@@ -262,57 +305,84 @@ def update_context(context: dict, messages: list) -> dict:
 
 # ── Agent Loop ──
 
+
 def agent_loop(messages: list, context: dict):
     """Main loop with error recovery wrapping LLM calls."""
     system = get_system_prompt(context)
-    state = RecoveryState()
+    state = RecoveryState()  # s11引入的恢复状态
     max_tokens = DEFAULT_MAX_TOKENS
 
     while True:
         # ── LLM call: with_retry handles 429/529, outer handles rest ──
         try:
             response = with_retry(
-                lambda mt=max_tokens, mdl=state.current_model:
-                    client.messages.create(
-                        model=mdl, system=system, messages=messages,
-                        tools=TOOLS, max_tokens=mt),
-                state)
+                lambda mt=max_tokens, mdl=state.current_model: client.messages.create(
+                    model=mdl,
+                    system=system,
+                    messages=messages,
+                    tools=TOOLS,
+                    max_tokens=mt,
+                ),
+                state,
+            )
         except Exception as e:
             # Path 2: prompt_too_long -> reactive compact (once)
             if is_prompt_too_long_error(e):
                 if not state.has_attempted_reactive_compact:
                     messages[:] = reactive_compact(messages)
                     state.has_attempted_reactive_compact = True
-                    continue
+                    continue  # 未压缩上下文, 则压缩后重试
                 print("  \033[31m[unrecoverable] still too long after compact\033[0m")
-                messages.append({"role": "assistant", "content": [
-                    {"type": "text",
-                     "text": "[Error] Context too large, cannot continue."}]})
+                # 压缩后仍然过长, 重试也无用, 直接返回
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "[Error] Context too large, cannot continue.",
+                            }
+                        ],
+                    }
+                )
                 return
 
             # Unrecoverable
             name = type(e).__name__
             print(f"  \033[31m[unrecoverable] {name}: {str(e)[:100]}\033[0m")
-            messages.append({"role": "assistant", "content": [
-                {"type": "text", "text": f"[Error] {name}: {str(e)[:200]}"}]})
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": f"[Error] {name}: {str(e)[:200]}"}
+                    ],
+                }
+            )
             return
 
         # ── Path 1: max_tokens -> escalate or continue ──
+        # 这里的continue保持上下文不动(或者添加一个精简回答的提示词), 然后重试
         if response.stop_reason == "max_tokens":
             # First escalation: don't append truncated output, retry same request
             if not state.has_escalated:
-                max_tokens = ESCALATED_MAX_TOKENS
+                max_tokens = ESCALATED_MAX_TOKENS  # 设置更大的输出token限制
                 state.has_escalated = True
-                print(f"  \033[33m[max_tokens] escalating"
-                      f" {DEFAULT_MAX_TOKENS} -> {ESCALATED_MAX_TOKENS}\033[0m")
+                print(
+                    f"  \033[33m[max_tokens] escalating"
+                    f" {DEFAULT_MAX_TOKENS} -> {ESCALATED_MAX_TOKENS}\033[0m"
+                )
                 continue
             # 64K still truncated: save truncated output + continuation prompt
             messages.append({"role": "assistant", "content": response.content})
             if state.recovery_count < MAX_RECOVERY_RETRIES:
-                messages.append({"role": "user", "content": CONTINUATION_PROMPT})
+                messages.append(
+                    {"role": "user", "content": CONTINUATION_PROMPT}
+                )  # 提示词中要求精简回答
                 state.recovery_count += 1
-                print(f"  \033[33m[max_tokens] continuation"
-                      f" {state.recovery_count}/{MAX_RECOVERY_RETRIES}\033[0m")
+                print(
+                    f"  \033[33m[max_tokens] continuation"
+                    f" {state.recovery_count}/{MAX_RECOVERY_RETRIES}\033[0m"
+                )
                 continue
             print("  \033[31m[max_tokens] recovery limit reached\033[0m")
             return
@@ -332,8 +402,9 @@ def agent_loop(messages: list, context: dict):
             handler = TOOL_HANDLERS.get(block.name)
             output = handler(**block.input) if handler else f"Unknown: {block.name}"
             print(str(output)[:200])
-            results.append({"type": "tool_result",
-                            "tool_use_id": block.id, "content": output})
+            results.append(
+                {"type": "tool_result", "tool_use_id": block.id, "content": output}
+            )
         messages.append({"role": "user", "content": results})
 
         context = update_context(context, messages)
