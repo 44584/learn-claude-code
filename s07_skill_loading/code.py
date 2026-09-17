@@ -73,10 +73,11 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
         meta = yaml.safe_load(parts[1]) or {}
     except yaml.YAMLError:
         meta = {}
-    return meta, parts[2].strip()
+    return meta, parts[2].strip() # 返回 (meta, body)，即 tuple[dict, str]
 
 
 # Build skill registry at startup (used for safe lookup in load_skill)
+# name -> {"name": name, "description": desc, "content": raw}
 SKILL_REGISTRY: dict[str, dict] = {}
 
 

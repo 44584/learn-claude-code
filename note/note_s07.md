@@ -8,7 +8,7 @@
 
 - 启动时(系统提示词构建时)，harness扫描skills/，构建system prompt
   在启动时 \_scan_skills() 一次性读入内存的shills注册表，只使用name和description构建catalog作为system prompt的一部分
-- 运行时(PreToolUse hook 中)，通过指定name读取完整的SKILL.md 【这里理解有误，load_skill是作为tool而非hook】
+- <del>运行时(PreToolUse hook 中)</del>，通过指定name读取完整的SKILL.md 【这里理解有误，load_skill是作为tool而非hook】
   - 运行时 load_skill 只是按 name 在skills的注册表中查找加载
   - 防路径遍历的设计
 
@@ -17,11 +17,38 @@
 skill的结构：
 统一存储在skills/目录下，每个skill对应一个子目录，必须包含一个SKILL.md文件。
 
-SKILL.md是YAML结构，包括name，description，content等。目录就使用name和description构建。【这里理解有误差，content改为body】
+<details>
+<summary>SKILL.md示例</summary>
+
+````
+---
+name: pdf
+description: Process PDF files - extract text, create PDFs, merge documents. Use when user asks to read PDF, create PDF, or work with PDF files.
+---
+
+# PDF Processing Skill
+
+You now have expertise in PDF manipulation. Follow these workflows:
+
+## Reading PDFs
+
+**Option 1: Quick text extraction (preferred)**
+
+```bash
+# Using pdftotext (poppler-utils)
+pdftotext input.pdf -  # Output to stdout
+pdftotext input.pdf output.txt  # Output to file
+```
+...
+````
+
+</details>
+
+SKILL.md是YAML结构，包括name，description，<del>content</del>等。catalog就使用name和description构建。【这里理解有误差，content改为body】
 
 虽然启动时只使用name和description构建目录，但是整个SKILL.md的内容也作为content也被注册到字典中，方便使用时按照name调取。然后file和bash工具可以按照指导，进一步访问对应skill的reference/，script/，assets/等目录。
 
-技能内容只是作为工具结果，进入当前messages _会随历史一直保留，直到压缩/截断/会话结束。_，而不是system prompt。
+技能内容只是作为`load_skill`工具结果，进入当前messages _会随历史一直保留，直到压缩/截断/会话结束。_，而不是system prompt。
 
 看完代码实现后，发现了几处误解
 
