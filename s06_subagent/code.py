@@ -336,6 +336,7 @@ def extract_text(content) -> str:
     )
 
 
+# 注意这里接收description参数，同时限制loop次数
 def spawn_subagent(description: str) -> str:
     """Spawn a subagent with fresh messages[], return summary only."""
     print(f"\n\033[35m[Subagent spawned]\033[0m")
