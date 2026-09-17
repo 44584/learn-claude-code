@@ -48,8 +48,21 @@ PROMPT_SECTIONS = {
 }
 
 
-# 后面几个函数的学习都依赖对 context 的理解
-# def update_context(context: dict, messages: list) -> dict
+# 后面几个函数的学习都依赖对 context 的理解，所以需要先理解context
+# def update_context(context: dict, messages: list) -> dict         函数在第184行
+
+"""
+这里的 `context` 是一个运行时上下文状态字典，用于描述当前工作环境，并决定系统提示词如何组装。它不是用户对话内容；对话内容存放在 `messages` / `history` 中。`update_context()` 返回：
+
+```json
+{
+  "enabled_tools": ["bash", "read_file", "write_file"],
+  "workspace": str(WORKDIR),
+  "memories": "...MEMORY.md 的内容..."
+}
+```
+"""
+
 
 def _assemble_system_prompt(context: dict) -> str:
     """Select and join prompt sections based on current context."""

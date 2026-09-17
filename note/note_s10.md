@@ -7,7 +7,9 @@
 
 解决方法:
 
-将 SYSTEM PROMPT 拆分成独立section, 运行时根据真实状态拼接, 比如
+将 SYSTEM PROMPT 拆分成独立section, 运行时根据真实状态拼接（runtime assembly）, 比如
+
+> 真实状态：section 是否加载取决于 **工具是否存在、文件是否存在、……**，而不是消息里的关键词。
 
 1. identity 	始终 	你是谁、怎么做事 
 2. tools 		始终 	可用工具列表 
