@@ -4,17 +4,27 @@
 
 提出的解决方案是： TodoWrite工具 + reminder机制。
 
-这里的TodoWrite工具，操作的是 进程内存中的一个列表；_感觉原理和Plan-and-Execute一致，但是这里是通过工具操作_。
+这里的TodoWrite工具，操作的是 进程内存中的一个列表；_感觉原理和Plan-and-Execute一致，但是这里是通过工具管理任务列表_。
 
 Nag reminder，模型连续 3 轮没调 todo_write 时，自动注入一条提醒
 
 看完代码，发现这个TodoWrite工具有些不同。
-TodoWrite工具在定义 schema json 时，要求模型给出的input参数就是 todo list 本身；
-然后对于模型输出的工具调用，核心只是用工具调用的input覆盖内存中的CURRENT_TODOS。
+在定义 TodoWrite 工具时，其 tool specification 的 input_schema 被设计为 todo list；
+agent 得到 LLM 输出的 tool call 后，核心只是用 tool call 的 input 覆盖内存中的CURRENT_TODOS。
 
-代码中并没有显式地将CURRENT_TODOS追加到messages中，但是提出CURRENT_TODOS的assistant消息的content中，已经包含信息了，这很巧妙。
+代码中并没有显式地将新得到的 CURRENT_TODOS 追加到 messages 中，因为提出 CURRENT_TODOS 的 assistant 消息中，已经包含 CURRENT_TODOS 了，这很巧妙。
 
-同样，任务列表中任务的状态是LLM在理解上下文后，包含在LLM调用todo_write的参数（参数是包含任务和任务的状态的列表）中
+比如下面是一次 TodoWrite 工具的 tool call 的格式，包含任务与任务状态：
+
+```json
+{
+  "todos": [
+    { "content": "Add type hints to greet function", "status": "in_progress" },
+    { "content": "Add docstring to greet function", "status": "pending" },
+    { "content": "Add main guard", "status": "pending" }
+  ]
+}
+```
 
 运行了代码，对于同一个任务，会分成几个步骤，任务有时一次性被完成，有时分步完成。可能是因为任务过于简单。
 
@@ -73,7 +83,7 @@ The script still runs identically when executed directly, but the main guard pre
 | **状态如何传递给 LLM** | 每次 LLM 调用前，由外部系统将**当前步骤 + 剩余任务**注入到 user/system 消息中 | 状态**隐含在 assistant 的历史中**（todo_write的调用json中，input就是一个todo列表），LLM 通过回顾自己之前的输出得知进度 |
 | **状态维护者**         | 外部系统（如状态机、数据库）                                                  | LLM 自身（借助对话历史，调用todo_write工具得到新的计划状态）                                                           |
 | **纠偏机制**           | 外部系统强制执行下一步                                                        | 通过 nag reminder（user 角色提醒）软性引导                                                                             |
-| **Token 开销**         | 每次注入都会增加 token（任务列表）                                    | 仅在 LLM 主动更新时产生一次工具调用参数，后续不再重复                                                                  |
+| **Token 开销**         | 每次注入都会增加 token（任务列表）                                            | 仅在 LLM 主动更新时产生一次工具调用参数，后续不再重复                                                                  |
 
 ---
 

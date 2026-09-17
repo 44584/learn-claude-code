@@ -38,6 +38,22 @@ There are **3,139** files under the current directory (including all subdirector
 
 # 看了s08后回顾
 
+## tool specification的格式
+
+```json
+TOOLS = [
+	{
+        "name": "bash",
+        "description": "Run a shell command.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"command": {"type": "string"}},
+            "required": ["command"],
+        },
+    },
+]
+```
+
 ## response的格式
 
 response的结构

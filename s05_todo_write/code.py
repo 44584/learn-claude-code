@@ -373,6 +373,7 @@ def agent_loop(messages: list):
 
             print(f"TOOL: {block.name}({block.input})")
 
+            # 这里 blocked 是判断tool执行是否被阻止，如果被阻止，blocked是 msg str
             blocked = trigger_hooks("PreToolUse", block)
             if blocked:
                 results.append(
