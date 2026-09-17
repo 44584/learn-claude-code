@@ -7,11 +7,16 @@
 
 有了更多工具时，模型只需要思考使用什么工具。
 
-这一节做了**工具分发**：
+**工具分发**：
 
-1. 定义工具（Json Schema）；
+1. 定义工具：
+   每个工具通过一个 **tool specification** 对象定义，包含 name、description 和 parameters（遵循 JSON Schema）。
 2. 注册处理函数(handler)。
-   然后通过模型的工具调用json获取函数名和参数，通过注册表获取函数然后执行。
+   然后通过模型输出的**tool call**对象，获取函数名和参数，再通过注册表获取函数，然后执行。
+
+**工具调用（tool calling）**：
+
+当 LLM 决定调用工具时，它会返回一个 **tool call** 对象，包含 id、type、name 和 arguments。
 
 多个工具调用：比如"读一下 a.py 和 b.py，然后列出所有 .py 文件"。
 教学版按照 response.content 逐个执行

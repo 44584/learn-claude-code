@@ -4,8 +4,8 @@ readme中给出的是 "while 循环中，模型调用工具->执行->喂回->再
 
 <!-- 20260914补充 -->
 
-- 模型调用工具是一条 `stop_reason==tool_use`的消息，`content`中包含了工具以及工具的参数。
-  - 工具的 schema 已经以json格式加入了 prompt
+- 模型调用工具是一条 `stop_reason==tool_use`的消息，`content`中包含了**tool call**（工具以及工具的参数）。
+  - tool specification 已经以Json Schema格式加入了 prompt
 - 执行则是 agent runtime 根据 `content` 执行工具。
   > 没有把工具调用作为一条消息加入消息列表，因为 tool call 已经以block形式存在于assistant消息中了
 - 喂回：向维护的消息列表中，添加`role`为`user`，`content`为工具执行结果的消息。
@@ -63,7 +63,7 @@ response的结构
 }
 ```
 
-tool_use
+tool call
 
 ```json
 {
