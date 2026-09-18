@@ -445,10 +445,15 @@ def snip_compact(messages, max_messages=50):
 # 所以 blocks 里的每个 block 和 messages[mi]["content"][bi] 指向同一个字典对象，
 # 然后micro_compact只处理_collect_tool_results返回的引用列表，就可以修改messages
 def _collect_tool_results(messages):
+    """注意这里返回的是block的引用的数组，而不是message的数组"""
     blocks = []
     for mi, msg in enumerate(messages):
         if msg.get("role") != "user" or not isinstance(msg.get("content"), list):
             continue
+        # 这个循环把每个tool_result展平
+        # 同一 user message 可能有多个 tool_result：
+        # 比如一次 assistant 响应并行发出了多个 tool_use，这种产生一个user message；
+        # 还有一种是多次“assistant → user → assistant”会产生多个 user message。
         for bi, block in enumerate(msg["content"]):
             if isinstance(block, dict) and block.get("type") == "tool_result":
                 blocks.append(
@@ -472,8 +477,11 @@ def micro_compact(messages):
 
 
 # L3: toolResultBudget — persist large results to disk
-def persist_large_output(tool_use_id, output):
-    """返回持久化消息以及位置和preview"""
+def _persist_large_output(tool_use_id, output):
+    """
+    - 如果output超过阈值，持久化到 TOOL_RESULTS_DIR / f"{tool_use_id}.txt" ，然后返回path和preview
+    - 如果没超过，什么也不做，重新返回output
+    """
     if len(output) <= PERSIST_THRESHOLD:
         return output
     TOOL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -513,13 +521,13 @@ def tool_result_budget(messages, max_bytes=200_000):
         if len(content) <= PERSIST_THRESHOLD:
             continue
         tid = block.get("tool_use_id", "unknown")
-        block["content"] = persist_large_output(tid, content)
+        block["content"] = _persist_large_output(tid, content)
         total = sum(len(str(b.get("content", ""))) for _, b in blocks)
     return messages
 
 
 # L4: autoCompact — LLM full summary
-def write_transcript(messages):
+def _write_transcript(messages):
     TRANSCRIPT_DIR.mkdir(parents=True, exist_ok=True)
     path = TRANSCRIPT_DIR / f"transcript_{int(time.time())}.jsonl"
     with path.open("w") as f:
@@ -528,7 +536,7 @@ def write_transcript(messages):
     return path
 
 
-def summarize_history(messages):
+def _summarize_history(messages):
     conversation = json.dumps(messages, default=str)[:80000]
     prompt = (
         "Summarize this coding-agent conversation so work can continue.\n"
@@ -550,16 +558,17 @@ def summarize_history(messages):
 
 
 def compact_history(messages):
-    transcript_path = write_transcript(messages)
+    """返回一条只包含摘要的 user message"""
+    transcript_path = _write_transcript(messages)
     print(f"[transcript saved: {transcript_path}]")
-    summary = summarize_history(messages)
+    summary = _summarize_history(messages)
     # 同样的，生成摘要是user方面的操作，放在user消息中
     return [{"role": "user", "content": f"[Compacted]\n\n{summary}"}]
 
 
 # Emergency: reactiveCompact — on API error
 def reactive_compact(messages):
-    transcript = write_transcript(messages)
+    transcript = _write_transcript(messages)
     tail_start = max(0, len(messages) - 5)
     if (
         tail_start > 0
@@ -568,7 +577,7 @@ def reactive_compact(messages):
         and _message_has_tool_use(messages[tail_start - 1])
     ):
         tail_start -= 1
-    summary = summarize_history(messages[:tail_start])
+    summary = _summarize_history(messages[:tail_start])
     return [
         {"role": "user", "content": f"[Reactive compact]\n\n{summary}"},
         *messages[tail_start:],
@@ -779,7 +788,7 @@ def agent_loop(messages: list):
             print(f"\033[36m> {block.name}\033[0m")
 
             # s08: compact tool triggers compact_history, not a no-op string
-            # LLM可以主动调用
+            # LLM可以主动调用压缩上下文
             if block.name == "compact":
                 messages[:] = compact_history(messages)
                 # 还要补充一个工具调用的结果
@@ -792,7 +801,8 @@ def agent_loop(messages: list):
                 )
                 messages.append({"role": "user", "content": results})
                 break  # end current turn, start fresh with compacted context
-
+            
+            # 检查 tool use 是否被阻止
             blocked = trigger_hooks("PreToolUse", block)
             if blocked:
                 results.append(
@@ -803,6 +813,7 @@ def agent_loop(messages: list):
                     }
                 )
                 continue
+            # 执行 tool use
             handler = TOOL_HANDLERS.get(block.name)
             output = handler(**block.input) if handler else f"Unknown: {block.name}"
             trigger_hooks("PostToolUse", block, output)
@@ -810,6 +821,9 @@ def agent_loop(messages: list):
             results.append(
                 {"type": "tool_result", "tool_use_id": block.id, "content": str(output)}
             )
+        # for-else语法
+        # else 块会在循环"正常结束"（即没有被 break 语句中断）时执行。
+        # 只要循环体里触发了 break，else 就不会执行。
         else:
             # normal path: no compact was called
             messages.append({"role": "user", "content": results})

@@ -16,19 +16,21 @@
 - L2 micro_compact 旧工具结果占位
   这一层将旧tool_result压缩
   - 具体操作：
-    保留最近三条tool_result的完整内容，更旧的且长度超过120的替换为一行占位符（提示LLM如果需要结果就重跑）
+    保留最近三条tool_result的完整内容，更旧的且长度超过120的替换为一行占位符（提示LLM如果需要更早的tool_result就重跑）
 
     _但是这个结果可能和旧结果不一致_
 
   但是这一层没有解决单个tool_result过长的问题，L3会解决
 
 - L3 tool_result_budget 大的结果落盘
-  这一层解决单轮大的tool_result问题
+  这一层解决单轮(turn)的tool_result过大的问题
   一轮tool_result可以是多个tool_result的汇总
   - 具体操作：
   1.  统计最后一轮的tool_result总大小
   2.  超过 200kb，则将结果从最大的开始落盘到指定文件中
   3.  上下文中保留 标记+前2000字符预览
+
+> 关于 轮(turn), 一轮只包含一次 agent_loop 调用, 其中可能有多次 tool calling
 
 - L4 compact_history LLM全量摘要
   前三层都是纯文本/结构操作，这一层引入LLM处理
@@ -41,6 +43,8 @@
   有时api还是返回413（prompt_too_long），这时触发reactive_compact，保持后5条消息不动，为其余消息生成摘要
 
 组合起来，核心原则是 cheap first, expensive last
+
+在`agent_loop`的`while`循环内部:
 
 1. 先跑L3，确保大内容落盘再做其他裁剪；
 2. 跑L1裁剪中间；

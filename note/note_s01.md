@@ -146,14 +146,63 @@ user输入：
 
 # 关于 主循环 与 智能体循环
 
-session 是一次运行，turn 是用户消息到完整响应，内部每调一次模型算一个 step。
+在本项目中，外层 `turn` 是一次用户输入到 `agent_loop(history)` 返回的完整处理；其内部可以有多个 `step`。一个 `step` 是一次 LLM 调用，以及其后可能发生的工具执行和 `tool_result` 回填。
 
-| 术语     | English          | 含义                                                           | 在代码中的对应                                                                                                                     |
-| -------- | ---------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| 一次对话 | conversation     | 从第一条消息到会话结束的完整过程                               | history 列表的整个生命周期                                                                                                         |
-| 一个会话 | session          | 程序的一次运行（打开终端到退出）                               | `__main__` 里 history 从空到积累的全部；跨会话 = 两次运行之间靠磁盘 `.memory/` 保留                                                |
-| 一轮对话 | turn / round     | 用户发一条消息 + 智能体完整处理完（可能内部调多次 LLM 和工具） | 主循环里一次 `input()` → 一次 `agent_loop(history)` 调用。`extract_memories` 正是在"本轮结束"（`stop_reason != "tool_use"`）时触发 |
-| 一个回合 | exchange         | 一条 user 消息 + 一条 assistant 消息（最简对话单元）           | 可以粗略等同于"一轮"，但更常用于指单个问答对                                                                                       |
-| 一步     | step / iteration | `agent_loop` 内部的一次 LLM API 调用（含其后可能执行的工具）   | `agent_loop` 里 `while True` 的一次迭代：`client.messages.create` → 执行工具 → 继续                                                |
-| 一条消息 | message          | `messages` 列表里的一个 dict                                   | `{"role": "user", "content": ...}`                                                                                                 |
-| 一个块   | block            | 消息 content 里的一个元素                                      | `text` / `tool_use` / `tool_result` 块                                                                                             |
+| 术语 | English | 含义 | 在代码中的对应 |
+| --- | --- | --- | --- |
+| 会话 | session | 一段持续的交互状态；在这个 REPL 中，约等于一次程序启动到退出 | `__main__` 中 `history` 从创建到进程退出。s01 本身不跨进程保留历史；s09 才会把部分长期信息写入 `.memory/` |
+| 一轮 | turn | 一次用户输入到智能体完整处理完，可包含多次模型调用和工具调用 | 外层 `input()` 循环的一次迭代：追加用户消息 → `agent_loop(history)` 返回 |
+| 消息 | message | `messages` / `history` 列表中的一个消息对象 | `{"role": "user" \| "assistant", "content": ...}` |
+| 块 | block | 一条 list 形式 `content` 中的一个元素 | `text`、`tool_use`、`tool_result` |
+
+单条 `message` 的形态如下：
+
+```python
+# 1. 用户的原始文本输入：content 是字符串
+{"role": "user", "content": "统计当前目录下的文件数"}
+
+# 2. assistant 的普通最终回复：content 是 text block 列表
+{"role": "assistant", "content": [
+    {"type": "text", "text": "当前目录共有 42 个文件。"}
+]}
+
+# 3. assistant 请求工具：同一条消息可含文字和多个 tool_use block
+{"role": "assistant", "content": [
+    {"type": "text", "text": "我来检查一下。"},
+    {"type": "tool_use", "id": "toolu_1", "name": "bash",
+     "input": {"command": "find . -type f | wc -l"}},
+    {"type": "tool_use", "id": "toolu_2", "name": "bash",
+     "input": {"command": "pwd"}},
+]}
+
+# 4. 工具执行反馈：role 仍是 user；一条消息可对应多个 tool_result block
+{"role": "user", "content": [
+    {"type": "tool_result", "tool_use_id": "toolu_1", "content": "42"},
+    {"type": "tool_result", "tool_use_id": "toolu_2", "content": "/workspace"},
+]}
+```
+
+`turn` 中的消息序列则有多种情况。`A(...)` 表示 assistant message，`U(...)` 表示 user message：
+
+```text
+# 没有工具调用：一个用户输入 + 一个最终回答
+U(原始文本) → A(最终 text)
+
+# 一次工具调用：一个 tool_use 对应一个 tool_result
+U(原始文本) → A(tool_use 1) → U(tool_result 1) → A(最终 text)
+
+# 并行工具调用：同一条 assistant message 有多个 tool_use，
+# 因而紧随的一条 user message 有多个对应的 tool_result
+U(原始文本) → A(tool_use 1, tool_use 2) → U(tool_result 1, tool_result 2) → A(最终 text)
+
+# 多次循环：模型收到第一批结果后再次调用工具，产生多条 tool-result user message
+U(原始文本) → A(tool_use 1) → U(tool_result 1)
+             → A(tool_use 2) → U(tool_result 2) → A(最终 text)
+
+# 两种情况可组合：每一次工具调用步骤都可以并行调用多个工具，且整个 turn 可以有多步
+U(原始文本) → A(tool_use 1, tool_use 2) → U(tool_result 1, tool_result 2)
+             → A(tool_use 3, tool_use 4) → U(tool_result 3, tool_result 4)
+             → A(最终 text)
+```
+
+所以，多个 `tool_result` 可能来自同一条 user message 中的并行工具调用，也可能分布在同一 `turn` 内多次循环产生的多条 user message 中，或同时具备两种情况。工具调用链中的 `user(tool_result)` 是协议中的 user 侧反馈，不代表人类用户又发了一条文本消息。
