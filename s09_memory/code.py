@@ -100,7 +100,7 @@ def _rebuild_index():
         name = meta.get("name", f.stem)
         desc = meta.get(
             "description", body.split("\n")[0][:80]
-        )  # 这个default的设计不错
+        )  # 这个default的设计不错，直接使用description第一行的前80个字符
         lines.append(f"- [{name}]({f.name}) — {desc}")
     MEMORY_INDEX.write_text("\n".join(lines) + "\n" if lines else "")
 
@@ -268,7 +268,7 @@ def extract_memories(messages: list):
         else "(none)"
     )
 
-    # 力大砖飞，简简单单LLM提取memory，朴实无华。不过这种确实比硬编码规则好得多
+    # 力大砖飞，简简单单把任务交给LLM，然后得到新增的memory，朴实无华。不过这种确实比硬编码规则好得多
     prompt = (
         "Extract user preferences, constraints, or project facts from this dialogue.\n"
         "Return a JSON array. Each item: {name, type, description, body}.\n"
@@ -792,8 +792,8 @@ MAX_REACTIVE_RETRIES = 1
 def agent_loop(messages: list):
     reactive_retries = 0
     # s09: inject relevant memory content into the current user turn
-    memories_content = load_memories(messages)
-    # 给它标注一下类型
+    relevant_memories_content = load_memories(messages)
+    # 记录本轮原始 user 文本 message 的索引；
     memory_turn: int | None = (
         len(messages) - 1
         if messages and isinstance(messages[-1].get("content"), str)
@@ -827,7 +827,7 @@ def agent_loop(messages: list):
         try:
             request_messages = messages
             if (
-                memories_content
+                relevant_memories_content
                 and memory_turn is not None
                 and memory_turn < len(messages)
             ):
@@ -836,7 +836,7 @@ def agent_loop(messages: list):
                 )  # 注意这里是浅拷贝，目的是保证下面的操作不会改变原本的messages的元素的指向。list.copy() 会创建一个新的列表对象，新列表中的元素是对原列表中元素的引用
                 request_messages[memory_turn] = {
                     **messages[memory_turn],
-                    "content": memories_content
+                    "content": relevant_memories_content
                     + "\n\n"
                     + messages[memory_turn]["content"],
                 }  # 这里将request_messages列表中的对应元素，指向新的内容。浅拷贝保证了不影响原来的指向
