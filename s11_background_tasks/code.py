@@ -62,8 +62,28 @@ _shell_process_lock = threading.RLock()
 
 
 def _stop_process_group(process: subprocess.Popen):
-    """Stop processes that remain in the command's original process group."""
-    for sig in (signal.SIGTERM, signal.SIGKILL):
+    """Stop a shell process and its children (cross-platform).
+
+    POSIX uses process-group signals (SIGTERM then SIGKILL). Windows has
+    neither ``os.killpg`` nor ``signal.SIGKILL``, so it falls back to
+    ``Popen.terminate()`` / ``Popen.kill()``.
+    """
+    if os.name == "nt":
+        for stop in (process.terminate, process.kill):
+            if process.poll() is not None:
+                return
+            try:
+                stop()
+            except OSError:
+                return
+            try:
+                process.wait(timeout=0.05)
+            except subprocess.TimeoutExpired:
+                continue
+        return
+
+    # SIGKILL is POSIX-only; fall back to SIGTERM on platforms without it.
+    for sig in (signal.SIGTERM, getattr(signal, "SIGKILL", signal.SIGTERM)):
         try:
             os.killpg(process.pid, sig)
         except (ProcessLookupError, OSError):
@@ -90,6 +110,8 @@ signal.signal(signal.SIGTERM, _handle_termination_signal)
 def _run_bash_process(command: str) -> tuple[str, int | None]:
     process = None
     try:
+        # start_new_session (setsid) exists only on POSIX; skip it on Windows.
+        popen_kwargs = {} if os.name == "nt" else {"start_new_session": True}
         process = subprocess.Popen(
             command,
             shell=True,
@@ -97,7 +119,7 @@ def _run_bash_process(command: str) -> tuple[str, int | None]:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True, errors="replace",
-            start_new_session=True,
+            **popen_kwargs,
         )
         with _shell_process_lock:
             _shell_processes.add(process)
