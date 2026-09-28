@@ -116,6 +116,7 @@ def claim_task(task_id: str, owner: str = "agent") -> str:
         deps = [d for d in task.blockedBy
                 if not _task_path(d).exists() or load_task(d).status != "completed"]
         return f"Blocked by: {deps}"
+    # 能够成功认领的话，修改owner和status
     task.owner = owner
     task.status = "in_progress"
     save_task(task)
@@ -129,6 +130,8 @@ def complete_task(task_id: str) -> str:
         return f"Task {task_id} is {task.status}, cannot complete"
     task.status = "completed"
     save_task(task)
+    # 扫描所有其他任务，找出可以被解释的下游任务
+    # in_progress 可能正由某个 agent 执行，不应再次认领
     unblocked = [t.subject for t in list_tasks()
                  if t.status == "pending" and t.blockedBy and can_start(t.id)]
     print(f"  \033[32m[complete] {task.subject} ✓\033[0m")
